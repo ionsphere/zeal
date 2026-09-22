@@ -52,6 +52,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
     if (!apiKey && this.id !== 'ollama') {
       throw new Error(`No API key configured for provider ${this.id}`);
     }
+    const toolOptions = tools.length ? { tools, tool_choice: 'auto', parallel_tool_calls: true } : {};
     const response = await fetch(`${this.config.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -59,7 +60,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
         'Content-Type': 'application/json',
         ...this.config.headers,
       },
-      body: JSON.stringify({ model, messages, tools, tool_choice: 'auto', parallel_tool_calls: true }),
+      body: JSON.stringify({ model, messages, ...toolOptions }),
     });
     const raw = await response.text();
     if (!response.ok) throw new Error(`${this.id} model API ${response.status}: ${raw.slice(0, 2_000)}`);
