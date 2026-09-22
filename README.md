@@ -2,6 +2,8 @@
 
 A model-agnostic, multi-agent coding harness. The harness core is independent of model vendors and operating systems; inference and command execution are provided by adapters.
 
+Zeal's direction combines SwarmForge's engineering workflows, GrokBot's agent runtime ergonomics, and Muse-inspired separation of execution from security policy. Local/self-hosted operation and per-agent model choice remain requirements. See the [harness design](docs/HARNESS-DESIGN.md) and [capability specification](docs/CAPABILITIES.md) for delivery order, implementation status, and acceptance criteria.
+
 ## Runtime status
 
 | Platform | Status | Execution |
@@ -121,7 +123,11 @@ Promotion requires a clean target checkout and creates an explicit merge of the 
 
 All filesystem tools reject paths that escape `WORKDIR`.
 
+This containment applies to filesystem tools, not arbitrary shell commands. Git worktrees isolate source changes; they do not isolate processes, credentials, or network access. The current runtime has the authority of the account running it. OS credential storage is not yet a separate credential broker, and the mutable JSONL activity journal is not a protected audit log. The declared security capabilities are planned, not currently enforced.
+
 ## Long-run behavior
+
+Planned: a harness-enforced completion loop recalls the model after a completion claim to compare the result with the user's request. Missing requirements trigger correction and revalidation; exhausted budgets or blockers are reported as incomplete. This applies to individual agents and final swarm results alongside executable gates. See [forced completion validation](docs/CAPABILITIES.md#forced-completion-validation-loop). The current runtime does not yet enforce this recall.
 
 The agent preserves native model tool-call IDs and sends tool results back as `role: tool`, which is required for sustained multi-turn tool use. A JSONL journal records assistant and tool activity. See [the harness design](docs/HARNESS-DESIGN.md) for the Grok Build and SwarmForge comparison and implementation roadmap.
 
