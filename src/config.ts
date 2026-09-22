@@ -16,6 +16,7 @@ export const config = {
     'https://api.meta.ai/v1'
   ).replace(/\/$/, ''),
   maxSteps: Number(process.env.ZEAL_MAX_STEPS || 100),
+  maxCompletionAttempts: Number(process.env.ZEAL_MAX_COMPLETION_ATTEMPTS || 3),
   commandTimeoutMs: Number(process.env.ZEAL_COMMAND_TIMEOUT_MS || 120_000),
   maxAgents: Number(process.env.ZEAL_MAX_AGENTS || 4),
 };

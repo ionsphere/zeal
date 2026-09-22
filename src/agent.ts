@@ -6,6 +6,7 @@ import { runCommandTool } from './tools/exec.js';
 import { spawnSubagent } from './tools/subagent.js';
 import { AgentCoordinator } from './coordinator.js';
 import { ModelRegistry, parseModelSelection, type ModelMessage, type ModelSelection, type ToolCall, type ToolDefinition } from './models.js';
+import { completionValidationMessages, correctionPrompt, parseCompletionVerdict } from './completion.js';
 
 const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
@@ -108,7 +109,7 @@ ${extra}
 Available tools: ${availableTools}`;
 }
 
-type RunAgentOptions = {
+export type RunAgentOptions = {
   task: string;
   workdir: string;
   systemExtra?: string;
@@ -116,6 +117,9 @@ type RunAgentOptions = {
   selection?: ModelSelection;
   coordinator?: AgentCoordinator;
   agentId?: string;
+  registry?: ModelRegistry;
+  maxSteps?: number;
+  maxCompletionAttempts?: number;
 };
 
 export async function runAgent(opts: RunAgentOptions) {
@@ -123,6 +127,9 @@ export async function runAgent(opts: RunAgentOptions) {
   const platform = detectPlatform();
   const selection = opts.selection ?? parseModelSelection(config.model, process.env.ZEAL_PROVIDER || 'meta');
   const coordinator = opts.coordinator ?? new AgentCoordinator(config.maxAgents);
+  const modelRegistry = opts.registry ?? registry;
+  const maxSteps = opts.maxSteps ?? config.maxSteps;
+  const maxCompletionAttempts = opts.maxCompletionAttempts ?? config.maxCompletionAttempts;
 
   if (!opts.isSubagent) {
     console.log(`\n=== Zeal (${selection.provider}/${selection.model}) ===`);
@@ -139,10 +146,11 @@ export async function runAgent(opts: RunAgentOptions) {
   ];
 
   let finalContent = '';
-  for (let step = 0; step < config.maxSteps; step++) {
+  let completionAttempts = 0;
+  for (let step = 0; step < maxSteps; step++) {
     const inbox = opts.agentId ? coordinator.drain(opts.agentId) : [];
     if (inbox.length) messages.push({ role: 'user', content: `Parent agent update:\n${inbox.join('\n')}` });
-    const assistant = await callModel(messages, selection);
+    const assistant = await callModel(messages, selection, modelRegistry);
     const content = assistant.content || '';
     const nativeCalls = assistant.tool_calls || [];
     const fallbackCalls = nativeCalls.length === 0 ? parsePatchFallback(content) : [];
@@ -160,7 +168,25 @@ export async function runAgent(opts: RunAgentOptions) {
     journal.append({ ts: new Date().toISOString(), role: 'assistant', content, toolCalls: nativeCalls } as any);
 
     if (nativeCalls.length === 0 && fallbackCalls.length === 0) {
-      if (content.includes('TASK_DONE')) break;
+      if (content.includes('TASK_DONE')) {
+        completionAttempts++;
+        const validationMessages = completionValidationMessages(opts.task, content, messages);
+        const validation = await callModel(validationMessages, selection, modelRegistry, []);
+        if (validation.tool_calls?.length) throw new Error('Completion validator attempted to call a tool');
+        const verdict = parseCompletionVerdict(validation.content || '');
+        journal.append({
+          ts: new Date().toISOString(), role: 'completion_validator', content: validation.content || '',
+          result: { attempt: completionAttempts, verdict },
+        } as any);
+        if (verdict.status === 'satisfied') return finalContent;
+        if (verdict.status === 'blocked') {
+          throw new Error(`Completion blocked: ${verdict.summary}${verdict.gaps.length ? ` (${verdict.gaps.join('; ')})` : ''}`);
+        }
+        if (completionAttempts >= maxCompletionAttempts) {
+          throw new Error(`Completion validation exhausted ${maxCompletionAttempts} attempt(s): ${verdict.gaps.join('; ') || verdict.summary}`);
+        }
+        messages.push({ role: 'user', content: correctionPrompt(verdict) });
+      }
       continue;
     }
 
@@ -182,7 +208,7 @@ export async function runAgent(opts: RunAgentOptions) {
     }
   }
 
-  return finalContent;
+  throw new Error(`Agent exhausted ${maxSteps} step(s) without validated completion`);
 }
 
 function parseToolArguments(call: ToolCall): Record<string, any> {
@@ -222,11 +248,16 @@ function parsePatchFallback(text: string) {
   return match ? [{ name: 'apply_patch', args: { patch: match[0] } }] : [];
 }
 
-async function callModel(messages: ModelMessage[], selection: ModelSelection): Promise<ModelMessage> {
+async function callModel(
+  messages: ModelMessage[],
+  selection: ModelSelection,
+  modelRegistry: ModelRegistry,
+  requestedTools?: readonly ToolDefinition[],
+): Promise<ModelMessage> {
   const platform = detectPlatform();
   const tools = TOOL_DEFINITIONS.filter(
     (tool) => tool.function.name !== 'run_command' || platform.capabilities.shell,
   );
 
-  return registry.resolve(selection).complete(messages, tools, selection.model);
+  return modelRegistry.resolve(selection).complete(messages, requestedTools ?? tools, selection.model);
 }

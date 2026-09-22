@@ -127,7 +127,7 @@ This containment applies to filesystem tools, not arbitrary shell commands. Git 
 
 ## Long-run behavior
 
-Planned: a harness-enforced completion loop recalls the model after a completion claim to compare the result with the user's request. Missing requirements trigger correction and revalidation; exhausted budgets or blockers are reported as incomplete. This applies to individual agents and final swarm results alongside executable gates. See [forced completion validation](docs/CAPABILITIES.md#forced-completion-validation-loop). The current runtime does not yet enforce this recall.
+A harness-enforced completion loop recalls the selected model in a fresh, tool-free context after an agent claims `TASK_DONE`. Missing requirements trigger correction and revalidation; blockers, step exhaustion, and the configurable `ZEAL_MAX_COMPLETION_ATTEMPTS` limit fail explicitly. This applies to top-level agents and individual swarm roles alongside executable gates. Validation of an assembled multi-role result remains planned. See [forced completion validation](docs/CAPABILITIES.md#forced-completion-validation-loop).
 
 The agent preserves native model tool-call IDs and sends tool results back as `role: tool`, which is required for sustained multi-turn tool use. A JSONL journal records assistant and tool activity. See [the harness design](docs/HARNESS-DESIGN.md) for the Grok Build and SwarmForge comparison and implementation roadmap.
 

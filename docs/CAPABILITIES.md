@@ -15,6 +15,7 @@ Initial declaration: September 8, 2026. This specification enables no new runtim
 | `workspace.files` | Partial | `src/tools/fs-tools.ts`: bounded tools and containment; shell execution is outside this guarantee |
 | `credential.store` | Partial | `src/auth/credential-store.ts`: OS storage; separate broker pending |
 | `activity.journal` | Partial | `src/tools/journal.ts`: mutable JSONL, no protected audit or session replay |
+| `completion.validate` | Partial | `src/agent.ts`, `src/completion.ts`: every agent completion claim gets a separate structured model review and bounded correction loop; assembled-swarm validation and artifact revision binding remain pending |
 
 Implemented describes the named behavior, not certification of every platform/model combination. Existing `PlatformCapabilities` flags describe shell, filesystem, and process-spawn availability, not security enforcement.
 
@@ -25,7 +26,6 @@ All following capabilities are **planned**. IDs provide stable vocabulary for fu
 | ID | Required behavior | Acceptance evidence |
 | --- | --- | --- |
 | `capability.negotiate` | Versioned support, scope, backend, and limitations; validate requirements before starting | Unsupported requirements stop execution with precise reasons; optional degradation is explicit |
-| `completion.validate` | Mandatory model recall after proposed completion compares actual results and evidence with the current user request; gaps trigger corrective work and another validation | Premature completion, omitted requirements despite passing tests, stale evidence, and invalid verdicts cannot produce success; exhaustion returns incomplete |
 | `policy.authorize` | Host-controlled decisions on typed actions and resource scopes; restricted profiles default deny | Tools, shells, gates, plugins, and children cannot bypass decisions or edit effective policy |
 | `approval.bind` | Approval binds actor, action digest, resources, policy revision, expiry, and permitted uses | Changed arguments, replay, expiry, or another agent invalidate approval; model text cannot approve |
 | `authority.delegate` | Child grants are subsets of parent grants and run limits; revocation propagates | Model switching, nested delegation, and handoffs cannot expand authority |
@@ -42,7 +42,7 @@ All following capabilities are **planned**. IDs provide stable vocabulary for fu
 
 ## Forced completion-validation loop
 
-`completion.validate` is a required harness behavior for top-level work and delegated roles. Today `src/agent.ts` exits on `TASK_DONE` without tool calls, or returns its last content after the step limit. Neither path performs a separate completion review. Existing executable swarm gates verify configured commands; they do not establish that the full user request was satisfied.
+`completion.validate` is a required harness behavior for top-level work and delegated roles. The core agent loop now performs the separate review and refuses to return success on step or review exhaustion. Existing executable swarm gates verify configured commands; they do not establish that the full user request was satisfied. Validation of the assembled result from multiple swarm roles is still pending.
 
 The harness owns this sequence:
 
@@ -52,7 +52,7 @@ The harness owns this sequence:
 4. On `needs_work`, feed the gaps back into the worker, perform authorized corrections, rerun affected checks, and validate again. Bind verdicts to task and artifact revisions; later edits or user steering invalidate a prior pass.
 5. Permit success only after a valid `satisfied` verdict and all mandatory executable gates pass on the same candidate. For swarms, validate each role before handoff and validate the assembled result against the full request before declaring overall completion.
 
-The default recall uses the selected model. Configurable review depth may add a fresh context or a separately selected provider/model, subject to data-release policy, but every completion requires at least one dedicated pass. Review depth, corrective-attempt limits, and total token/time budgets belong to harness configuration, not the acting model's discretion. These are proposed settings, not current configuration keys.
+The default recall uses the selected model in a fresh, tool-free context. `ZEAL_MAX_COMPLETION_ATTEMPTS` bounds completion claims and defaults to three. Configurable review depth and a separately selected validation model remain planned, subject to data-release policy. Total token/time budgets also remain to be added at the harness level.
 
 Reserve budget for validation. Budget exhaustion, cancellation, repeated lack of progress, and unresolved blockers produce explicit non-success outcomes with remaining gaps and preserved work. They must never be relabeled as completion. The loop cannot expand authority, invent requirements, or keep retrying an action that needs user input. Persist attempts, evidence references, verdicts, and consumed budgets; recovery must not reset limits or accept stale validation.
 

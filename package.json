@@ -10,7 +10,7 @@
     "zeal": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "test": "tsx --test test/fs-tools.test.ts test/auth.test.ts test/harness.test.ts test/swarm.test.ts",
+    "test": "tsx --test test/fs-tools.test.ts test/auth.test.ts test/harness.test.ts test/completion.test.ts test/swarm.test.ts",
     "check": "npm run build && npm test"
   },
   "dependencies": {
